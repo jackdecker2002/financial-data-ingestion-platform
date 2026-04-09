@@ -7,7 +7,7 @@ import logging
 class PostgresClient:
     def __init__(self, config: dict):
         self.config = config
-        self.conn = self._connect()
+        self.conn = None
 
     def _connect(self):
         return psycopg2.connect(
@@ -17,9 +17,14 @@ class PostgresClient:
             user=self.config["user"],
             password=self.config["password"],
         )
+    
+    def _ensure_connection(self):
+        if self.conn is None or self.conn.closed != 0:
+            self.conn = self._connect()
 
     def execute(self, query: str, params: tuple = None):
         try:
+            self._ensure_connection()
             with self.conn.cursor() as cur:
                 cur.execute(query, params)
             self.conn.commit()
@@ -28,15 +33,36 @@ class PostgresClient:
             self.conn.rollback()
             raise
 
+    def __enter__(self):
+        self._ensure_connection()
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type:
+            logging.error(f"Exception occurred: {exc_val}")
+        self.close()
+
     def fetch_one(self, query: str, params: tuple = None):
-        with self.conn.cursor() as cur:
-            cur.execute(query, params)
-            return cur.fetchone()
+        try:
+            self._ensure_connection()
+            with self.conn.cursor() as cur:
+                cur.execute(query, params)
+                return cur.fetchone()
+        except Exception as e:
+            logging.error(f"Fetch one failed: {e}")
+            self.conn.rollback()
+            raise
 
     def fetch_all(self, query: str, params: tuple = None):
-        with self.conn.cursor() as cur:
-            cur.execute(query, params)
-            return cur.fetchall()
+        try:
+            self._ensure_connection()
+            with self.conn.cursor() as cur:
+                cur.execute(query, params)
+                return cur.fetchall()
+        except Exception as e:
+            logging.error(f"Fetch all failed: {e}")
+            self.conn.rollback()
+            raise
 
     def insert_dataframe(self, df: pd.DataFrame, table_name: str):
         if df.empty:
@@ -52,11 +78,16 @@ class PostgresClient:
             fields=sql.SQL(", ").join(map(sql.Identifier, columns)),
         )
 
-        with self.conn.cursor() as cur:
-            # execute_values accepts a query string, so convert the SQL object to string
-            execute_values(cur, query.as_string(self.conn), values)
-
-        self.conn.commit()
+        try:
+            self._ensure_connection()
+            with self.conn.cursor() as cur:
+                execute_values(cur, query.as_string(self.conn), values)
+            self.conn.commit()
+        except Exception as e:
+            logging.error(f"Insert dataframe failed: {e}")
+            self.conn.rollback()
+            raise
 
     def close(self):
-        self.conn.close()
+        if self.conn and self.conn.closed == 0:
+            self.conn.close()

@@ -8,9 +8,6 @@ config = {
     "password": "postgres",
 }
 
-db = PostgresClient(config)
-
-result = db.fetch_one("SELECT NOW();")
-print(result)
-
-db.close()
+with PostgresClient(config) as db:
+    result = db.fetch_one("SELECT NOW();")
+    print(result)
