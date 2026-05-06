@@ -4,7 +4,13 @@ def run_schema(db, path):
     with open(path, "r") as f:
         db.execute(f.read())
 
-config = {...}
+config = {
+        "host": "localhost",
+        "port": 5432,
+        "dbname": "finance",
+        "user": "postgres",
+        "password": "postgres",
+    }
 
 with PostgresClient(config) as db:
     run_schema(db, "sql/raw/raw_stock_prices.sql")
