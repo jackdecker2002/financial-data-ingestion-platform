@@ -41,7 +41,7 @@ class AlphaVantageClient:
             try:
                 date = datetime.strptime(date_str, "%Y-%m-%d")
 
-                if start_date and date < start_date:
+                if start_date and date.date() < start_date:
                     continue
 
                 rows.append({

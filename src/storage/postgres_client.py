@@ -88,6 +88,40 @@ class PostgresClient:
             self.conn.rollback()
             raise
 
+    def get_watermark(self, table_name: str, symbol: str):
+        """Get the last watermark for a specific table and symbol."""
+        query = """
+        SELECT last_watermark 
+        FROM pipeline_state 
+        WHERE table_name = %s AND symbol = %s
+        """
+        result = self.fetch_one(query, (table_name, symbol))
+        return result[0] if result else None
+
+    def update_watermark(self, table_name: str, symbol: str, watermark):
+        """Update the watermark for a specific table and symbol."""
+        query = """
+        INSERT INTO pipeline_state (table_name, symbol, last_watermark)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (table_name, symbol) 
+        DO UPDATE SET 
+            last_watermark = EXCLUDED.last_watermark,
+            updated_at = NOW()
+        """
+        self.execute(query, (table_name, symbol, watermark))
+
+    def log_pipeline_run(self, run_id: str, start_time, end_time=None, status="running"):
+        """Log a pipeline run to the pipeline_runs table."""
+        query = """
+        INSERT INTO pipeline_runs (run_id, start_time, end_time, status)
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT (run_id) 
+        DO UPDATE SET 
+            end_time = EXCLUDED.end_time,
+            status = EXCLUDED.status
+        """
+        self.execute(query, (run_id, start_time, end_time, status))
+
     def close(self):
         if self.conn and self.conn.closed == 0:
             self.conn.close()
